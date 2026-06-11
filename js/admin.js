@@ -1,219 +1,239 @@
 // ============================================================
-// AUTH.JS — Firebase Compat
+// ADMIN.JS — Panel de administración (Firebase Compat)
+// Solo se carga en admin.html, NO en index.html
 // ============================================================
 
-let currentUser = null;
-let userRole = null;
+const Admin = (() => {
 
-// ─────────────────────────────────────────────
-// GUARDAR USUARIO EN FIRESTORE
-// Función separada para reutilizar en register y Google
-// ─────────────────────────────────────────────
-async function saveUserToFirestore(user, extraData = {}) {
-  try {
-    const ref = db.collection('users').doc(user.uid);
-    const snap = await ref.get();
-
-    if (!snap.exists) {
-      // Usuario nuevo: crear documento completo
-      await ref.set({
-        nombre:    extraData.nombre    || user.displayName || '',
-        email:     user.email,
-        telefono:  extraData.telefono  || '',
-        role:      'client',
-        creadoEn:  firebase.firestore.FieldValue.serverTimestamp()
-      });
-      console.log('Usuario guardado en Firestore:', user.uid);
-    }
-    // Si ya existe, no sobreescribir (preserva el role que el admin pudo haber cambiado)
-  } catch (e) {
-    console.error('Error guardando usuario en Firestore:', e.code, e.message);
-    throw e; // re-lanzar para que el llamador lo maneje
+  async function init() {
+    await loadDashboard();
+    await loadBookingsTable();
   }
-}
 
-// ─────────────────────────────────────────────
-// AUTH OBSERVER
-// ─────────────────────────────────────────────
-function init(onAuthChange) {
-  auth.onAuthStateChanged(async (user) => {
-    if (user) {
-      currentUser = user;
-      userRole = await getUserRole(user.uid);
-      onAuthChange?.(user, userRole);
-      updateNavUI(user, userRole);
-    } else {
-      currentUser = null;
-      userRole = null;
-      onAuthChange?.(null, null);
-      updateNavUI(null, null);
-    }
-  });
-}
-
-// ─────────────────────────────────────────────
-// ROLE
-// ─────────────────────────────────────────────
-async function getUserRole(uid) {
-  try {
-    const snap = await db.collection('users').doc(uid).get();
-    return snap.exists ? snap.data().role : 'client';
-  } catch {
-    return 'client';
-  }
-}
-
-// ─────────────────────────────────────────────
-// REGISTER
-// ─────────────────────────────────────────────
-async function register({ nombre, email, telefono, password }) {
-  try {
-    const cred = await auth.createUserWithEmailAndPassword(email, password);
-    await cred.user.updateProfile({ displayName: nombre });
-
-    // Guardar en Firestore — si falla, eliminamos el usuario de Auth
-    // para que el usuario pueda intentarlo de nuevo sin el error "email ya registrado"
+  // ── Dashboard stats ───────────────────────────────────────
+  async function loadDashboard() {
     try {
-      await saveUserToFirestore(cred.user, { nombre, telefono });
-    } catch (firestoreError) {
-      console.error('Fallo Firestore, revirtiendo Auth:', firestoreError);
-      await cred.user.delete(); // revertir la creación en Auth
-      Toast.show('Error al guardar tus datos. Revisá las reglas de Firestore.', 'error');
-      return { ok: false, error: 'firestore-failed' };
+      const [bookings, users] = await Promise.all([
+        db.collection('bookings').get(),
+        db.collection('users').get()
+      ]);
+
+      const allBookings = bookings.docs.map(d => ({ id: d.id, ...d.data() }));
+      const pendientes  = allBookings.filter(b => b.estado === 'pendiente').length;
+      const confirmadas = allBookings.filter(b => b.estado === 'confirmada').length;
+      const ingresos    = allBookings
+        .filter(b => b.estado === 'confirmada' && !b.esBloqueo)
+        .reduce((s, b) => s + (b.precioTotal || 0), 0);
+
+      setText('stat-total-bookings',  allBookings.length);
+      setText('stat-pending',         pendientes);
+      setText('stat-confirmed',       confirmadas);
+      setText('stat-users',           users.size);
+      setText('stat-revenue',         `$${ingresos.toLocaleString('es-AR')}`);
+    } catch (e) {
+      console.error('Error cargando dashboard:', e);
     }
-
-    Toast.show('¡Cuenta creada con éxito!', 'success');
-    return { ok: true, user: cred.user };
-  } catch (e) {
-    console.error('Error en registro:', e.code, e.message);
-    const msg = firebaseErrorMsg(e.code);
-    Toast.show(msg, 'error');
-    return { ok: false, error: msg };
   }
-}
 
-// ─────────────────────────────────────────────
-// LOGIN
-// ─────────────────────────────────────────────
-async function login(email, password) {
-  try {
-    const cred = await auth.signInWithEmailAndPassword(email, password);
-    Toast.show('¡Bienvenido de vuelta!', 'success');
-    return { ok: true, user: cred.user };
-  } catch (e) {
-    const msg = firebaseErrorMsg(e.code);
-    Toast.show(msg, 'error');
-    return { ok: false, error: msg };
-  }
-}
+  // ── Tabla de reservas ─────────────────────────────────────
+  async function loadBookingsTable() {
+    const tbody = document.getElementById('bookings-tbody');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:2rem"><span class="loader-sm"></span></td></tr>';
 
-// ─────────────────────────────────────────────
-// GOOGLE LOGIN — signInWithRedirect
-// ─────────────────────────────────────────────
-async function loginWithGoogle() {
-  try {
-    const provider = new firebase.auth.GoogleAuthProvider();
-    provider.addScope('email');
-    provider.addScope('profile');
-    await auth.signInWithRedirect(provider);
-  } catch (e) {
-    console.error('Error iniciando redirect de Google:', e);
-    Toast.show('Error al iniciar con Google', 'error');
-    return { ok: false };
-  }
-}
+    try {
+      const bookings = await Bookings.getAllBookings();
 
-// ─────────────────────────────────────────────
-// PROCESAR RESULTADO DEL REDIRECT DE GOOGLE
-// IMPORTANTE: debe llamarse con await ANTES de Auth.init()
-// Retorna true si procesó un redirect, false si no había nada que procesar
-// ─────────────────────────────────────────────
-async function handleGoogleRedirect() {
-  try {
-    const result = await auth.getRedirectResult();
+      if (!bookings.length) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--gray)">No hay reservas aún</td></tr>';
+        return;
+      }
 
-    if (!result || !result.user) {
-      return false; // No hay redirect pendiente, flujo normal
+      tbody.innerHTML = bookings.map(b => {
+        const fi = b.fechaIngreso?.toDate ? b.fechaIngreso.toDate() : new Date(b.fechaIngreso);
+        const fs = b.fechaSalida?.toDate  ? b.fechaSalida.toDate()  : new Date(b.fechaSalida);
+        const estadoClass = { pendiente: 'warning', confirmada: 'success', cancelada: 'error' }[b.estado] || '';
+        return `
+          <tr>
+            <td><code>#${b.id.slice(-6).toUpperCase()}</code></td>
+            <td>${escHtml(b.userName || '—')}<br><small>${escHtml(b.userEmail || '')}</small></td>
+            <td>${formatDate(fi)}</td>
+            <td>${formatDate(fs)}</td>
+            <td>${b.cantidadPersonas || '—'}</td>
+            <td>$${(b.precioTotal || 0).toLocaleString('es-AR')}</td>
+            <td>
+              <span class="badge badge--${estadoClass}">${b.estado}</span>
+              ${b.esBloqueo ? '' : `
+                <div class="action-btns">
+                  ${b.estado !== 'confirmada' ? `<button class="btn-sm btn-sm--success" onclick="Admin.updateStatus('${b.id}','confirmada')">✓</button>` : ''}
+                  ${b.estado !== 'cancelada'  ? `<button class="btn-sm btn-sm--error"   onclick="Admin.updateStatus('${b.id}','cancelada')">✗</button>` : ''}
+                  <button class="btn-sm btn-sm--danger" onclick="Admin.deleteB('${b.id}')">🗑</button>
+                </div>
+              `}
+            </td>
+          </tr>
+        `;
+      }).join('');
+    } catch (e) {
+      console.error('Error cargando tabla de reservas:', e);
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--error)">Error al cargar reservas</td></tr>';
     }
+  }
 
-    const user = result.user;
-    console.log('Redirect de Google procesado:', user.email);
+  // ── Acciones rápidas ──────────────────────────────────────
+  async function updateStatus(id, estado) {
+    await Bookings.updateBookingStatus(id, estado);
+    await loadBookingsTable();
+    await loadDashboard();
+  }
 
-    // Guardar en Firestore si es usuario nuevo
-    await saveUserToFirestore(user);
-    Toast.show('¡Bienvenido, ' + (user.displayName || user.email) + '!', 'success');
-    return true;
+  async function deleteB(id) {
+    if (!confirm('¿Eliminar esta reserva?')) return;
+    await Bookings.deleteBooking(id);
+    await loadBookingsTable();
+    await loadDashboard();
+  }
 
-  } catch (e) {
-    console.error('Error procesando redirect de Google:', e.code, e.message);
-    if (e.code === 'auth/unauthorized-domain') {
-      Toast.show('Error: El dominio no está autorizado en Firebase. Agregalo en Authentication → Dominios autorizados.', 'error');
-    } else {
-      Toast.show('Error con Google: ' + (e.message || e.code), 'error');
+  // ── Bloquear fechas ───────────────────────────────────────
+  async function blockDatesAdmin() {
+    const inicio = document.getElementById('block-start')?.value;
+    const fin    = document.getElementById('block-end')?.value;
+    const motivo = document.getElementById('block-reason')?.value?.trim() || 'Bloqueo manual';
+
+    if (!inicio || !fin) { Toast.show('Seleccioná ambas fechas', 'warning'); return; }
+    if (fin <= inicio)   { Toast.show('La fecha de fin debe ser posterior al inicio', 'warning'); return; }
+
+    await Bookings.blockDates(inicio, fin, motivo);
+    await loadBookingsTable();
+    await loadDashboard();
+  }
+
+  // ── Configuración: precio y descripción ──────────────────
+  async function loadCurrentPrice() {
+    try {
+      const snap = await db.collection('cabins').doc('cielito-lindo').get();
+      if (!snap.exists) return;
+      const data = snap.data();
+      const priceEl = document.getElementById('admin-price-input');
+      const descEl  = document.getElementById('admin-desc-input');
+      if (priceEl && data.precio)      priceEl.value = data.precio;
+      if (descEl  && data.descripcion) descEl.value  = data.descripcion;
+    } catch (e) {
+      console.error('Error cargando config de cabaña:', e);
     }
-    return false;
   }
-}
 
-// ─────────────────────────────────────────────
-// LOGOUT
-// ─────────────────────────────────────────────
-async function logout() {
-  await auth.signOut();
-  Toast.show('Sesión cerrada', 'info');
-}
-
-// ─────────────────────────────────────────────
-// NAV UI
-// ─────────────────────────────────────────────
-function updateNavUI(user, role) {
-  const loginBtn = document.getElementById('nav-login-btn');
-  const userMenu = document.getElementById('nav-user-menu');
-  const adminBtn = document.getElementById('nav-admin-btn');
-  const userName = document.getElementById('nav-user-name');
-
-  if (!loginBtn) return;
-
-  if (user) {
-    loginBtn.style.display = 'none';
-    if (userMenu) userMenu.style.display = 'flex';
-    if (userName) userName.textContent = user.displayName || user.email.split('@')[0];
-    if (adminBtn) adminBtn.style.display = role === 'admin' ? 'flex' : 'none';
-  } else {
-    loginBtn.style.display = 'flex';
-    if (userMenu) userMenu.style.display = 'none';
-    if (adminBtn) adminBtn.style.display = 'none';
+  async function savePrice() {
+    const price = parseInt(document.getElementById('admin-price-input')?.value);
+    if (!price || price < 1000) { Toast.show('Ingresá un precio válido', 'warning'); return; }
+    try {
+      await db.collection('cabins').doc('cielito-lindo').set({ precio: price }, { merge: true });
+      Toast.show('Precio actualizado', 'success');
+    } catch (e) {
+      Toast.show('Error al guardar precio', 'error');
+    }
   }
-}
 
-// ─────────────────────────────────────────────
-// ERRORS
-// ─────────────────────────────────────────────
-function firebaseErrorMsg(code) {
-  const msgs = {
-    'auth/user-not-found':        'No existe una cuenta con ese email',
-    'auth/wrong-password':        'Contraseña incorrecta',
-    'auth/email-already-in-use':  'Ya existe una cuenta con ese email',
-    'auth/weak-password':         'La contraseña debe tener al menos 6 caracteres',
-    'auth/invalid-email':         'Email inválido',
-    'auth/too-many-requests':     'Demasiados intentos. Intentá más tarde',
-    'auth/network-request-failed':'Error de conexión',
-    'auth/invalid-credential':    'Credenciales inválidas',
-    'auth/unauthorized-domain':   'Dominio no autorizado en Firebase'
+  async function saveDescription() {
+    const desc = document.getElementById('admin-desc-input')?.value?.trim();
+    if (!desc) { Toast.show('Escribí una descripción', 'warning'); return; }
+    try {
+      await db.collection('cabins').doc('cielito-lindo').set({ descripcion: desc }, { merge: true });
+      Toast.show('Descripción actualizada', 'success');
+    } catch (e) {
+      Toast.show('Error al guardar descripción', 'error');
+    }
+  }
+
+  // ── Galería ───────────────────────────────────────────────
+  async function loadGalleryAdmin() {
+    try {
+      const snap = await db.collection('cabins').doc('cielito-lindo').get();
+      const imagenes = snap.exists ? (snap.data().imagenes || []) : [];
+      const list = document.getElementById('gallery-admin-list');
+      if (!list) return;
+      list.innerHTML = imagenes.length
+        ? imagenes.map((url, i) => `
+            <div class="gallery-admin-item">
+              <img src="${url}" style="width:80px;height:60px;object-fit:cover;border-radius:8px;">
+              <span style="font-size:.8rem;word-break:break-all;">${url}</span>
+              <button class="btn-sm btn-sm--danger" onclick="Admin.removeImage(${i})">✕</button>
+            </div>`).join('')
+        : '<p style="color:var(--gray)">No hay imágenes guardadas</p>';
+    } catch (e) {
+      console.error('Error cargando galería admin:', e);
+    }
+  }
+
+  async function addImageUrl() {
+    const input = document.getElementById('gallery-url-input');
+    const url   = input?.value?.trim();
+    if (!url || !url.startsWith('http')) { Toast.show('URL inválida', 'warning'); return; }
+    try {
+      const snap = await db.collection('cabins').doc('cielito-lindo').get();
+      const imagenes = snap.exists ? (snap.data().imagenes || []) : [];
+      imagenes.push(url);
+      await db.collection('cabins').doc('cielito-lindo').set({ imagenes }, { merge: true });
+      if (input) input.value = '';
+      Toast.show('Imagen agregada', 'success');
+      await loadGalleryAdmin();
+    } catch (e) {
+      Toast.show('Error al agregar imagen', 'error');
+    }
+  }
+
+  async function removeImage(index) {
+    if (!confirm('¿Eliminar esta imagen?')) return;
+    try {
+      const snap = await db.collection('cabins').doc('cielito-lindo').get();
+      const imagenes = snap.exists ? (snap.data().imagenes || []) : [];
+      imagenes.splice(index, 1);
+      await db.collection('cabins').doc('cielito-lindo').set({ imagenes }, { merge: true });
+      Toast.show('Imagen eliminada', 'success');
+      await loadGalleryAdmin();
+    } catch (e) {
+      Toast.show('Error al eliminar imagen', 'error');
+    }
+  }
+
+  // ── Calendario admin ──────────────────────────────────────
+  async function loadCalendarAdmin() {
+    await Calendar.init('admin-calendar-container', (start, end) => {
+      const si = document.getElementById('block-start');
+      const fi = document.getElementById('block-end');
+      if (si) si.value = start;
+      if (fi) fi.value = end;
+      Toast.show(`Rango seleccionado: ${start} → ${end}`, 'info');
+    });
+  }
+
+  // ── Helpers ───────────────────────────────────────────────
+  function setText(id, value) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = value;
+  }
+
+  function formatDate(date) {
+    return date.toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: 'numeric' });
+  }
+
+  function escHtml(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  return {
+    init,
+    loadDashboard,
+    loadBookingsTable,
+    updateStatus,
+    deleteB,
+    blockDatesAdmin,
+    loadCurrentPrice,
+    savePrice,
+    saveDescription,
+    loadGalleryAdmin,
+    addImageUrl,
+    removeImage,
+    loadCalendarAdmin
   };
-  return msgs[code] || 'Ocurrió un error (' + code + ')';
-}
-
-// ─────────────────────────────────────────────
-// EXPORT (objeto global)
-// ─────────────────────────────────────────────
-const Auth = {
-  init,
-  register,
-  login,
-  loginWithGoogle,
-  handleGoogleRedirect,
-  logout,
-  getCurrentUser: () => currentUser,
-  getRole: () => userRole
-};
+})();

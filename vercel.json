@@ -1,5 +1,4 @@
 {
-  "outputDirectory": "cielito lindo final",
   "rewrites": [
     {
       "source": "/js/firebase-config.js",
