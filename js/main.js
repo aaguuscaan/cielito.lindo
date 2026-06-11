@@ -101,22 +101,29 @@ async function handleBooking() {
   const btn = document.getElementById('btn-book');
   if (btn) { btn.disabled = true; btn.textContent = 'Procesando...'; }
 
-  const personas = parseInt(document.getElementById('book-persons')?.value || '2');
-  const { total } = await Bookings.calculatePrice(selectedCheckIn, selectedCheckOut, personas);
+  let result = { ok: false };
+  try {
+    const personas = parseInt(document.getElementById('book-persons')?.value || '2');
+    const { total } = await Bookings.calculatePrice(selectedCheckIn, selectedCheckOut, personas);
 
-  const result = await Bookings.createBooking({
-    userId:           Auth.getCurrentUser().uid,
-    userName:         user.displayName || user.email.split('@')[0],
-    userEmail:        user.email,
-    telefono,
-    fechaIngreso:     selectedCheckIn,
-    fechaSalida:      selectedCheckOut,
-    cantidadPersonas: document.getElementById('book-persons')?.value,
-    precioTotal:      total,
-    notas:            document.getElementById('book-notes')?.value
-  });
-
-  if (btn) { btn.disabled = false; btn.textContent = 'Confirmar reserva'; }
+    result = await Bookings.createBooking({
+      userId:           Auth.getCurrentUser().uid,
+      userName:         user.displayName || user.email.split('@')[0],
+      userEmail:        user.email,
+      telefono,
+      fechaIngreso:     selectedCheckIn,
+      fechaSalida:      selectedCheckOut,
+      cantidadPersonas: document.getElementById('book-persons')?.value,
+      precioTotal:      total,
+      notas:            document.getElementById('book-notes')?.value
+    });
+  } catch (e) {
+    console.error('Error inesperado en reserva:', e);
+    Toast.show('Error inesperado. Intentá de nuevo.', 'error');
+  } finally {
+    // SIEMPRE restaurar el botón, sin importar qué pasó
+    if (btn) { btn.disabled = false; btn.textContent = 'Confirmar reserva'; }
+  }
 
   if (result.ok) {
     selectedCheckIn  = null;

@@ -7,13 +7,19 @@ const Bookings = (() => {
   // Obtener reservas activas
   async function getActiveBookings() {
     try {
-      const snap = await db.collection('bookings')
-        .where('estado', 'in', ['confirmada', 'pendiente'])
-        .get();
+      // Timeout de 8 segundos para no quedar colgado si hay problemas de red
+      const snap = await Promise.race([
+        db.collection('bookings')
+          .where('estado', 'in', ['confirmada', 'pendiente'])
+          .get(),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('timeout')), 8000)
+        )
+      ]);
       return snap.docs.map(d => ({ id: d.id, ...d.data() }));
     } catch (e) {
-      console.error('Error obteniendo reservas activas:', e);
-      return [];
+      console.error('Error obteniendo reservas activas:', e.message);
+      return []; // Continuar sin fechas bloqueadas si hay problema de red
     }
   }
 
@@ -86,7 +92,13 @@ const Bookings = (() => {
       };
 
       console.log('Guardando en Firestore:', bookingData);
-      const ref = await db.collection('bookings').add(bookingData);
+      // Timeout de 15 segundos para el guardado
+      const ref = await Promise.race([
+        db.collection('bookings').add(bookingData),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('timeout-saving')), 15000)
+        )
+      ]);
       console.log('Reserva creada con ID:', ref.id);
 
       Toast.show('¡Reserva solicitada con éxito!', 'success');
@@ -96,8 +108,10 @@ const Bookings = (() => {
       // Mensajes de error específicos para diagnóstico
       if (e.code === 'permission-denied') {
         Toast.show('Error de permisos. Revisá las reglas de Firestore.', 'error');
-      } else if (e.code === 'unavailable') {
-        Toast.show('Sin conexión. Intentá de nuevo.', 'error');
+      } else if (e.code === 'unavailable' || e.message === 'timeout-saving') {
+        Toast.show('Sin conexión con Firebase. Verificá tu internet e intentá de nuevo.', 'error');
+      } else if (e.message === 'timeout') {
+        Toast.show('Tiempo de espera agotado. Intentá de nuevo.', 'error');
       } else {
         Toast.show('Error al crear la reserva: ' + (e.message || e.code), 'error');
       }
