@@ -115,10 +115,22 @@ async function loginWithGoogle() {
     const provider = new firebase.auth.GoogleAuthProvider();
     provider.addScope('email');
     provider.addScope('profile');
-    await auth.signInWithRedirect(provider);
+    const result = await auth.signInWithPopup(provider);
+    if (result.user) {
+      await saveUserToFirestore(result.user);
+      Toast.show('¡Bienvenido, ' + (result.user.displayName || result.user.email) + '!', 'success');
+      return { ok: true, user: result.user };
+    }
+    return { ok: false };
   } catch (e) {
-    console.error('Error iniciando redirect de Google:', e);
-    Toast.show('Error al iniciar con Google', 'error');
+    console.error('Error con Google:', e);
+    if (e.code === 'auth/popup-blocked') {
+      Toast.show('El popup fue bloqueado. Permití popups para este sitio.', 'error');
+    } else if (e.code === 'auth/unauthorized-domain') {
+      Toast.show('Dominio no autorizado en Firebase', 'error');
+    } else {
+      Toast.show('Error al iniciar con Google: ' + (e.message || e.code), 'error');
+    }
     return { ok: false };
   }
 }
