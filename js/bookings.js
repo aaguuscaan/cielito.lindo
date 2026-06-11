@@ -6,10 +6,15 @@ const Bookings = (() => {
 
   // Obtener reservas activas
   async function getActiveBookings() {
-    const snap = await db.collection('bookings')
-      .where('estado', 'in', ['confirmada', 'pendiente'])
-      .get();
-    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    try {
+      const snap = await db.collection('bookings')
+        .where('estado', 'in', ['confirmada', 'pendiente'])
+        .get();
+      return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    } catch (e) {
+      console.error('Error obteniendo reservas activas:', e);
+      return [];
+    }
   }
 
   // Fechas bloqueadas
@@ -48,19 +53,28 @@ const Bookings = (() => {
     return { total: nights * precioNoche, noches: nights, precioPorNoche: precioNoche };
   }
 
-  // Crear reserva
+  // FIX #3: Crear reserva con mejor manejo de errores y logging
   async function createBooking({ userId, userName, userEmail, telefono, fechaIngreso, fechaSalida, cantidadPersonas, precioTotal, notas }) {
-    const available = await isAvailable(fechaIngreso, fechaSalida);
-    if (!available) {
-      Toast.show('Las fechas seleccionadas ya están reservadas', 'error');
+    console.log('Iniciando createBooking...', { userId, fechaIngreso, fechaSalida });
+
+    // Verificar que el usuario esté autenticado
+    if (!userId) {
+      Toast.show('Debés iniciar sesión para reservar', 'error');
       return { ok: false };
     }
+
     try {
-      const ref = await db.collection('bookings').add({
+      const available = await isAvailable(fechaIngreso, fechaSalida);
+      if (!available) {
+        Toast.show('Las fechas seleccionadas ya están reservadas', 'error');
+        return { ok: false };
+      }
+
+      const bookingData = {
         userId,
         userName,
         userEmail,
-        telefono,
+        telefono: telefono || '',
         fechaIngreso: firebase.firestore.Timestamp.fromDate(new Date(fechaIngreso)),
         fechaSalida:  firebase.firestore.Timestamp.fromDate(new Date(fechaSalida)),
         cantidadPersonas: parseInt(cantidadPersonas),
@@ -69,63 +83,110 @@ const Bookings = (() => {
         estado: 'pendiente',
         creadoEn: firebase.firestore.FieldValue.serverTimestamp(),
         cabinId: 'cielito-lindo'
-      });
+      };
+
+      console.log('Guardando en Firestore:', bookingData);
+      const ref = await db.collection('bookings').add(bookingData);
+      console.log('Reserva creada con ID:', ref.id);
+
       Toast.show('¡Reserva solicitada con éxito!', 'success');
       return { ok: true, id: ref.id };
     } catch (e) {
-      console.error(e);
-      Toast.show('Error al crear la reserva', 'error');
-      return { ok: false };
+      console.error('Error detallado al crear reserva:', e);
+      // Mensajes de error específicos para diagnóstico
+      if (e.code === 'permission-denied') {
+        Toast.show('Error de permisos. Revisá las reglas de Firestore.', 'error');
+      } else if (e.code === 'unavailable') {
+        Toast.show('Sin conexión. Intentá de nuevo.', 'error');
+      } else {
+        Toast.show('Error al crear la reserva: ' + (e.message || e.code), 'error');
+      }
+      return { ok: false, error: e };
     }
   }
 
-  // Reservas del usuario
+  // FIX #3: getUserBookings — eliminado orderBy para evitar requerir índice compuesto
+  // Si necesitás orderBy, creá el índice en Firebase Console:
+  // Firestore > Índices > Crear índice > Colección: bookings, campos: userId ASC, creadoEn DESC
   async function getUserBookings(userId) {
-    const snap = await db.collection('bookings')
-      .where('userId', '==', userId)
-      .orderBy('creadoEn', 'desc')
-      .get();
-    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    try {
+      const snap = await db.collection('bookings')
+        .where('userId', '==', userId)
+        .get();
+      // Ordenamos en el cliente para evitar necesitar índice compuesto
+      const bookings = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      return bookings.sort((a, b) => {
+        const dateA = a.creadoEn?.toDate ? a.creadoEn.toDate() : new Date(0);
+        const dateB = b.creadoEn?.toDate ? b.creadoEn.toDate() : new Date(0);
+        return dateB - dateA; // más reciente primero
+      });
+    } catch (e) {
+      console.error('Error obteniendo reservas del usuario:', e);
+      return [];
+    }
   }
 
-  // Admin: todas las reservas
+  // Admin: todas las reservas (sin orderBy para evitar índice)
   async function getAllBookings() {
-    const snap = await db.collection('bookings')
-      .orderBy('creadoEn', 'desc')
-      .get();
-    return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    try {
+      const snap = await db.collection('bookings').get();
+      const bookings = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      return bookings.sort((a, b) => {
+        const dateA = a.creadoEn?.toDate ? a.creadoEn.toDate() : new Date(0);
+        const dateB = b.creadoEn?.toDate ? b.creadoEn.toDate() : new Date(0);
+        return dateB - dateA;
+      });
+    } catch (e) {
+      console.error('Error obteniendo todas las reservas:', e);
+      return [];
+    }
   }
 
   // Admin: actualizar estado
   async function updateBookingStatus(bookingId, estado) {
-    await db.collection('bookings').doc(bookingId).update({ estado });
-    Toast.show(`Reserva ${estado}`, 'success');
+    try {
+      await db.collection('bookings').doc(bookingId).update({ estado });
+      Toast.show(`Reserva ${estado}`, 'success');
+    } catch (e) {
+      console.error('Error actualizando estado:', e);
+      Toast.show('Error al actualizar la reserva', 'error');
+    }
   }
 
   // Admin: eliminar
   async function deleteBooking(bookingId) {
-    await db.collection('bookings').doc(bookingId).delete();
-    Toast.show('Reserva eliminada', 'info');
+    try {
+      await db.collection('bookings').doc(bookingId).delete();
+      Toast.show('Reserva eliminada', 'info');
+    } catch (e) {
+      console.error('Error eliminando reserva:', e);
+      Toast.show('Error al eliminar la reserva', 'error');
+    }
   }
 
   // Admin: bloquear fechas
   async function blockDates(fechaInicio, fechaFin, motivo) {
-    await db.collection('bookings').add({
-      userId: 'admin-block',
-      userName: 'Bloqueado',
-      userEmail: '',
-      telefono: '',
-      fechaIngreso: firebase.firestore.Timestamp.fromDate(new Date(fechaInicio)),
-      fechaSalida:  firebase.firestore.Timestamp.fromDate(new Date(fechaFin)),
-      cantidadPersonas: 0,
-      precioTotal: 0,
-      notas: motivo || 'Bloqueo manual',
-      estado: 'confirmada',
-      esBloqueo: true,
-      creadoEn: firebase.firestore.FieldValue.serverTimestamp(),
-      cabinId: 'cielito-lindo'
-    });
-    Toast.show('Fechas bloqueadas', 'success');
+    try {
+      await db.collection('bookings').add({
+        userId: 'admin-block',
+        userName: 'Bloqueado',
+        userEmail: '',
+        telefono: '',
+        fechaIngreso: firebase.firestore.Timestamp.fromDate(new Date(fechaInicio)),
+        fechaSalida:  firebase.firestore.Timestamp.fromDate(new Date(fechaFin)),
+        cantidadPersonas: 0,
+        precioTotal: 0,
+        notas: motivo || 'Bloqueo manual',
+        estado: 'confirmada',
+        esBloqueo: true,
+        creadoEn: firebase.firestore.FieldValue.serverTimestamp(),
+        cabinId: 'cielito-lindo'
+      });
+      Toast.show('Fechas bloqueadas', 'success');
+    } catch (e) {
+      console.error('Error bloqueando fechas:', e);
+      Toast.show('Error al bloquear fechas', 'error');
+    }
   }
 
   return { getBlockedDates, isAvailable, calculatePrice, createBooking, getUserBookings, getAllBookings, updateBookingStatus, deleteBooking, blockDates };

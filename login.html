@@ -117,6 +117,9 @@
   <script src="js/firebase-config.js"></script>
   <script src="js/auth.js"></script>
   <script>
+    // Procesar resultado de redirect de Google (si viene de ese flujo)
+    Auth.handleGoogleRedirect();
+
     // Redirect if already logged in
     Auth.init((user, role) => {
       if (user) {
@@ -150,9 +153,10 @@
       if (r.ok) window.location.href = 'index.html';
     }
 
+    // Google usa redirect: la respuesta llega al recargar la página
     async function loginGoogle() {
-      const r = await Auth.loginWithGoogle();
-      if (r.ok) window.location.href = 'index.html';
+      // Inicia el redirect a Google. La página se recarga y handleGoogleRedirect() procesa el resultado.
+      await Auth.loginWithGoogle();
     }
 
     document.addEventListener('keydown', e => {

@@ -43,6 +43,8 @@ async function register({ nombre, email, telefono, password }) {
   try {
     const cred = await auth.createUserWithEmailAndPassword(email, password);
     await cred.user.updateProfile({ displayName: nombre });
+
+    // FIX #1: Guardar usuario en Firestore con merge para evitar sobreescribir
     await db.collection('users').doc(cred.user.uid).set({
       nombre,
       email,
@@ -50,9 +52,11 @@ async function register({ nombre, email, telefono, password }) {
       role: 'client',
       creadoEn: firebase.firestore.FieldValue.serverTimestamp()
     });
+
     Toast.show('¡Cuenta creada con éxito!', 'success');
     return { ok: true, user: cred.user };
   } catch (e) {
+    console.error('Error en registro:', e);
     const msg = firebaseErrorMsg(e.code);
     Toast.show(msg, 'error');
     return { ok: false, error: msg };
@@ -75,28 +79,53 @@ async function login(email, password) {
 }
 
 // ─────────────────────────────────────────────
-// GOOGLE LOGIN
+// GOOGLE LOGIN — FIX #2: usar redirect en lugar de popup
+// signInWithPopup falla en producción por bloqueos de navegador/Firebase
 // ─────────────────────────────────────────────
 async function loginWithGoogle() {
   try {
     const provider = new firebase.auth.GoogleAuthProvider();
-    const cred = await auth.signInWithPopup(provider);
-    const snap = await db.collection('users').doc(cred.user.uid).get();
+    provider.addScope('email');
+    provider.addScope('profile');
+
+    // Usar redirect — más confiable en producción que popup
+    await auth.signInWithRedirect(provider);
+    // La función retorna vacío, el resultado se maneja en handleGoogleRedirect()
+    return { ok: true };
+  } catch (e) {
+    console.error('Error iniciando redirect de Google:', e);
+    Toast.show('Error al iniciar con Google', 'error');
+    return { ok: false };
+  }
+}
+
+// Llamar esta función al cargar la página para procesar el resultado del redirect
+async function handleGoogleRedirect() {
+  try {
+    const result = await auth.getRedirectResult();
+    if (!result.user) return; // No hay redirect pendiente
+
+    const user = result.user;
+    // Crear o actualizar documento en Firestore
+    const snap = await db.collection('users').doc(user.uid).get();
     if (!snap.exists) {
-      await db.collection('users').doc(cred.user.uid).set({
-        nombre: cred.user.displayName,
-        email: cred.user.email,
+      await db.collection('users').doc(user.uid).set({
+        nombre: user.displayName || '',
+        email: user.email,
         telefono: '',
         role: 'client',
         creadoEn: firebase.firestore.FieldValue.serverTimestamp()
       });
     }
     Toast.show('¡Bienvenido!', 'success');
-    return { ok: true, user: cred.user };
   } catch (e) {
-    console.error(e);
-    Toast.show('Error al iniciar con Google', 'error');
-    return { ok: false };
+    console.error('Error procesando redirect de Google:', e);
+    // Error común: auth/unauthorized-domain — el dominio no está autorizado en Firebase
+    if (e.code === 'auth/unauthorized-domain') {
+      Toast.show('Dominio no autorizado. Verificá la configuración de Firebase.', 'error');
+    } else {
+      Toast.show('Error al iniciar con Google: ' + (e.message || e.code), 'error');
+    }
   }
 }
 
@@ -143,7 +172,8 @@ function firebaseErrorMsg(code) {
     'auth/invalid-email': 'Email inválido',
     'auth/too-many-requests': 'Demasiados intentos. Intentá más tarde',
     'auth/network-request-failed': 'Error de conexión',
-    'auth/invalid-credential': 'Credenciales inválidas'
+    'auth/invalid-credential': 'Credenciales inválidas',
+    'auth/unauthorized-domain': 'Dominio no autorizado en Firebase'
   };
   return msgs[code] || 'Ocurrió un error';
 }
@@ -156,6 +186,7 @@ const Auth = {
   register,
   login,
   loginWithGoogle,
+  handleGoogleRedirect,
   logout,
   getCurrentUser: () => currentUser,
   getRole: () => userRole
