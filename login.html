@@ -117,16 +117,25 @@
   <script src="js/firebase-config.js"></script>
   <script src="js/auth.js"></script>
   <script>
-    // Procesar resultado de redirect de Google (si viene de ese flujo)
-    Auth.handleGoogleRedirect();
-
-    // Redirect if already logged in
-    Auth.init((user, role) => {
-      if (user) {
+    // IMPORTANTE: await handleGoogleRedirect() ANTES de Auth.init()
+    // Si volvemos de un redirect de Google, procesar primero y luego redirigir
+    (async () => {
+      const fromGoogle = await Auth.handleGoogleRedirect();
+      if (fromGoogle) {
+        // Google redirect exitoso: ir a la página de destino
         const redirect = new URLSearchParams(location.search).get('redirect') || 'index.html';
         window.location.href = redirect;
+        return;
       }
-    });
+
+      // Flujo normal: si ya está logueado, redirigir
+      Auth.init((user, role) => {
+        if (user) {
+          const redirect = new URLSearchParams(location.search).get('redirect') || 'index.html';
+          window.location.href = redirect;
+        }
+      });
+    })();
 
     function switchTab(tab, btn) {
       document.querySelectorAll('.modal-tab').forEach(b => b.classList.remove('active'));

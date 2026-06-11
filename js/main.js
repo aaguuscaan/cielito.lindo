@@ -8,8 +8,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('page-loader')?.classList.add('hidden');
   }, 1800);
 
-  // Procesar resultado de redirect de Google si viene de ese flujo
-  Auth.handleGoogleRedirect();
+  // IMPORTANTE: await handleGoogleRedirect() ANTES de Auth.init()
+  // Así Firestore se escribe antes de que onAuthStateChanged dispare
+  await Auth.handleGoogleRedirect();
 
   Auth.init();
 

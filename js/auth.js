@@ -6,6 +6,33 @@ let currentUser = null;
 let userRole = null;
 
 // ─────────────────────────────────────────────
+// GUARDAR USUARIO EN FIRESTORE
+// Función separada para reutilizar en register y Google
+// ─────────────────────────────────────────────
+async function saveUserToFirestore(user, extraData = {}) {
+  try {
+    const ref = db.collection('users').doc(user.uid);
+    const snap = await ref.get();
+
+    if (!snap.exists) {
+      // Usuario nuevo: crear documento completo
+      await ref.set({
+        nombre:    extraData.nombre    || user.displayName || '',
+        email:     user.email,
+        telefono:  extraData.telefono  || '',
+        role:      'client',
+        creadoEn:  firebase.firestore.FieldValue.serverTimestamp()
+      });
+      console.log('Usuario guardado en Firestore:', user.uid);
+    }
+    // Si ya existe, no sobreescribir (preserva el role que el admin pudo haber cambiado)
+  } catch (e) {
+    console.error('Error guardando usuario en Firestore:', e.code, e.message);
+    throw e; // re-lanzar para que el llamador lo maneje
+  }
+}
+
+// ─────────────────────────────────────────────
 // AUTH OBSERVER
 // ─────────────────────────────────────────────
 function init(onAuthChange) {
@@ -44,19 +71,21 @@ async function register({ nombre, email, telefono, password }) {
     const cred = await auth.createUserWithEmailAndPassword(email, password);
     await cred.user.updateProfile({ displayName: nombre });
 
-    // FIX #1: Guardar usuario en Firestore con merge para evitar sobreescribir
-    await db.collection('users').doc(cred.user.uid).set({
-      nombre,
-      email,
-      telefono: telefono || '',
-      role: 'client',
-      creadoEn: firebase.firestore.FieldValue.serverTimestamp()
-    });
+    // Guardar en Firestore — si falla, eliminamos el usuario de Auth
+    // para que el usuario pueda intentarlo de nuevo sin el error "email ya registrado"
+    try {
+      await saveUserToFirestore(cred.user, { nombre, telefono });
+    } catch (firestoreError) {
+      console.error('Fallo Firestore, revirtiendo Auth:', firestoreError);
+      await cred.user.delete(); // revertir la creación en Auth
+      Toast.show('Error al guardar tus datos. Revisá las reglas de Firestore.', 'error');
+      return { ok: false, error: 'firestore-failed' };
+    }
 
     Toast.show('¡Cuenta creada con éxito!', 'success');
     return { ok: true, user: cred.user };
   } catch (e) {
-    console.error('Error en registro:', e);
+    console.error('Error en registro:', e.code, e.message);
     const msg = firebaseErrorMsg(e.code);
     Toast.show(msg, 'error');
     return { ok: false, error: msg };
@@ -79,19 +108,14 @@ async function login(email, password) {
 }
 
 // ─────────────────────────────────────────────
-// GOOGLE LOGIN — FIX #2: usar redirect en lugar de popup
-// signInWithPopup falla en producción por bloqueos de navegador/Firebase
+// GOOGLE LOGIN — signInWithRedirect
 // ─────────────────────────────────────────────
 async function loginWithGoogle() {
   try {
     const provider = new firebase.auth.GoogleAuthProvider();
     provider.addScope('email');
     provider.addScope('profile');
-
-    // Usar redirect — más confiable en producción que popup
     await auth.signInWithRedirect(provider);
-    // La función retorna vacío, el resultado se maneja en handleGoogleRedirect()
-    return { ok: true };
   } catch (e) {
     console.error('Error iniciando redirect de Google:', e);
     Toast.show('Error al iniciar con Google', 'error');
@@ -99,33 +123,35 @@ async function loginWithGoogle() {
   }
 }
 
-// Llamar esta función al cargar la página para procesar el resultado del redirect
+// ─────────────────────────────────────────────
+// PROCESAR RESULTADO DEL REDIRECT DE GOOGLE
+// IMPORTANTE: debe llamarse con await ANTES de Auth.init()
+// Retorna true si procesó un redirect, false si no había nada que procesar
+// ─────────────────────────────────────────────
 async function handleGoogleRedirect() {
   try {
     const result = await auth.getRedirectResult();
-    if (!result.user) return; // No hay redirect pendiente
+
+    if (!result || !result.user) {
+      return false; // No hay redirect pendiente, flujo normal
+    }
 
     const user = result.user;
-    // Crear o actualizar documento en Firestore
-    const snap = await db.collection('users').doc(user.uid).get();
-    if (!snap.exists) {
-      await db.collection('users').doc(user.uid).set({
-        nombre: user.displayName || '',
-        email: user.email,
-        telefono: '',
-        role: 'client',
-        creadoEn: firebase.firestore.FieldValue.serverTimestamp()
-      });
-    }
-    Toast.show('¡Bienvenido!', 'success');
+    console.log('Redirect de Google procesado:', user.email);
+
+    // Guardar en Firestore si es usuario nuevo
+    await saveUserToFirestore(user);
+    Toast.show('¡Bienvenido, ' + (user.displayName || user.email) + '!', 'success');
+    return true;
+
   } catch (e) {
-    console.error('Error procesando redirect de Google:', e);
-    // Error común: auth/unauthorized-domain — el dominio no está autorizado en Firebase
+    console.error('Error procesando redirect de Google:', e.code, e.message);
     if (e.code === 'auth/unauthorized-domain') {
-      Toast.show('Dominio no autorizado. Verificá la configuración de Firebase.', 'error');
+      Toast.show('Error: El dominio no está autorizado en Firebase. Agregalo en Authentication → Dominios autorizados.', 'error');
     } else {
-      Toast.show('Error al iniciar con Google: ' + (e.message || e.code), 'error');
+      Toast.show('Error con Google: ' + (e.message || e.code), 'error');
     }
+    return false;
   }
 }
 
@@ -165,17 +191,17 @@ function updateNavUI(user, role) {
 // ─────────────────────────────────────────────
 function firebaseErrorMsg(code) {
   const msgs = {
-    'auth/user-not-found': 'No existe una cuenta con ese email',
-    'auth/wrong-password': 'Contraseña incorrecta',
-    'auth/email-already-in-use': 'Ya existe una cuenta con ese email',
-    'auth/weak-password': 'La contraseña debe tener al menos 6 caracteres',
-    'auth/invalid-email': 'Email inválido',
-    'auth/too-many-requests': 'Demasiados intentos. Intentá más tarde',
-    'auth/network-request-failed': 'Error de conexión',
-    'auth/invalid-credential': 'Credenciales inválidas',
-    'auth/unauthorized-domain': 'Dominio no autorizado en Firebase'
+    'auth/user-not-found':        'No existe una cuenta con ese email',
+    'auth/wrong-password':        'Contraseña incorrecta',
+    'auth/email-already-in-use':  'Ya existe una cuenta con ese email',
+    'auth/weak-password':         'La contraseña debe tener al menos 6 caracteres',
+    'auth/invalid-email':         'Email inválido',
+    'auth/too-many-requests':     'Demasiados intentos. Intentá más tarde',
+    'auth/network-request-failed':'Error de conexión',
+    'auth/invalid-credential':    'Credenciales inválidas',
+    'auth/unauthorized-domain':   'Dominio no autorizado en Firebase'
   };
-  return msgs[code] || 'Ocurrió un error';
+  return msgs[code] || 'Ocurrió un error (' + code + ')';
 }
 
 // ─────────────────────────────────────────────
