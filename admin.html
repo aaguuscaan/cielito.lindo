@@ -187,7 +187,7 @@
           <label class="form-label">Motivo (opcional)</label>
           <input type="text" class="form-input" id="block-reason" placeholder="Mantenimiento, uso personal...">
         </div>
-        <button class="btn-save" onclick="Admin.blockDatesHandler()" style="width:100%;padding:1rem;border-radius:var(--radius);">
+        <button class="btn-save" onclick="Admin.blockDatesAdmin()" style="width:100%;padding:1rem;border-radius:var(--radius);">
           Bloquear fechas
         </button>
       </div>
@@ -205,7 +205,7 @@
         <div class="price-input-wrap">
           <span style="font-size:1.1rem;color:var(--gray);">$</span>
           <input type="number" id="admin-price-input" min="1000" step="500" placeholder="45000">
-          <button class="btn-save" onclick="Admin.updatePrice()">Guardar precio</button>
+          <button class="btn-save" onclick="Admin.savePrice()">Guardar precio</button>
         </div>
       </div>
 

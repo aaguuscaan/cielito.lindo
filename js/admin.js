@@ -8,6 +8,7 @@ const Admin = (() => {
   async function init() {
     await loadDashboard();
     await loadBookingsTable();
+    await loadGalleryAdmin();
   }
 
   // ── Dashboard stats ───────────────────────────────────────
@@ -151,7 +152,7 @@ const Admin = (() => {
     try {
       const snap = await db.collection('cabins').doc('cielito-lindo').get();
       const imagenes = snap.exists ? (snap.data().imagenes || []) : [];
-      const list = document.getElementById('gallery-admin-list');
+      const list = document.getElementById('admin-gallery');
       if (!list) return;
       list.innerHTML = imagenes.length
         ? imagenes.map((url, i) => `
@@ -238,3 +239,24 @@ const Admin = (() => {
     loadCalendarAdmin
   };
 })();
+
+
+window.handleImageUpload = async function(event){
+ const file=event.target.files[0]; if(!file) return;
+ try{
+ const progress=document.getElementById('upload-progress');
+ if(progress) progress.style.width='0%';
+ const fileName=`gallery/${Date.now()}-${file.name}`;
+ const storageRef=firebase.storage().ref(fileName);
+ const task=storageRef.put(file);
+ task.on('state_changed',s=>{ if(progress) progress.style.width=((s.bytesTransferred/s.totalBytes)*100)+'%';});
+ await task;
+ const url=await storageRef.getDownloadURL();
+ const docRef=db.collection('cabins').doc('cielito-lindo');
+ const snap=await docRef.get();
+ const imagenes=snap.exists?(snap.data().imagenes||[]):[];
+ imagenes.push(url);
+ await docRef.set({imagenes},{merge:true});
+ await Admin.loadGalleryAdmin();
+ }catch(e){console.error(e);}
+}
