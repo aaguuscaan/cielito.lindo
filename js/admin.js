@@ -25,11 +25,12 @@ const Admin = (() => {
         .filter(b => b.estado === 'confirmada' && !b.esBloqueo)
         .reduce((s, b) => s + (b.precioTotal || 0), 0);
 
-      setText('stat-total-bookings',  allBookings.length);
-      setText('stat-pending',         pendientes);
-      setText('stat-confirmed',       confirmadas);
-      setText('stat-users',           users.size);
-      setText('stat-revenue',         `$${ingresos.toLocaleString('es-AR')}`);
+      setText('stat-active', confirmadas);
+      const hoy=new Date();
+      const esteMes=allBookings.filter(b=>{const f=b.fechaIngreso?.toDate?b.fechaIngreso.toDate():new Date(b.fechaIngreso);return f.getMonth()===hoy.getMonth()&&f.getFullYear()===hoy.getFullYear();}).length;
+      setText('stat-month', esteMes);
+      setText('stat-revenue', `$${ingresos.toLocaleString('es-AR')}`);
+      setText('stat-total', allBookings.length);
     } catch (e) {
       console.error('Error cargando dashboard:', e);
     }
@@ -56,11 +57,11 @@ const Admin = (() => {
         return `
           <tr>
             <td><code>#${b.id.slice(-6).toUpperCase()}</code></td>
-            <td>${escHtml(b.userName || '—')}<br><small>${escHtml(b.userEmail || '')}</small></td>
+            <td>${escHtml(b.userName || '—')}</td>
+            <td>${escHtml(b.userEmail || '')}</td>
             <td>${formatDate(fi)}</td>
             <td>${formatDate(fs)}</td>
             <td>${b.cantidadPersonas || '—'}</td>
-            <td>$${(b.precioTotal || 0).toLocaleString('es-AR')}</td>
             <td>
               <span class="badge badge--${estadoClass}">${b.estado}</span>
               ${b.esBloqueo ? '' : `
@@ -198,7 +199,7 @@ const Admin = (() => {
 
   // ── Calendario admin ──────────────────────────────────────
   async function loadCalendarAdmin() {
-    await Calendar.init('admin-calendar-container', (start, end) => {
+    await Calendar.init('admin-calendar', (start, end) => {
       const si = document.getElementById('block-start');
       const fi = document.getElementById('block-end');
       if (si) si.value = start;
