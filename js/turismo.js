@@ -26,7 +26,7 @@ const TURISMO_DATA = [
   {
     categoria: 'balnearios', nombre: 'El Durazno', tag: 'Familiar · río', tiempo: '15–25 min', nivel: 'ripio',
     desc: 'Río de aguas transparentes y frías, playas pequeñas, ollas naturales y un entorno serrano muy tranquilo. Ideal para medio día o el día completo.',
-    nota: 'Camino de ripio; manejar despacio y consultar estado tras lluvias.', destino: 'El Durazno'
+    nota: 'Camino de ripio; manejar despacio y consultar estado tras lluvias.', destino: 'El Durazno, Villa Yacanto, Las Liebres 200, X5147 Villa Yacanto, Córdoba'
   },
   {
     categoria: 'balnearios', nombre: 'Los Cajones del Durazno', tag: 'Naturaleza · caminata', tiempo: '25–40 min', nivel: 'montana',
@@ -46,7 +46,7 @@ const TURISMO_DATA = [
   {
     categoria: 'balnearios', nombre: 'Puente Blanco', tag: 'Familiar · río', tiempo: '30–45 min', nivel: 'ripio',
     desc: 'Balneario agreste sobre el río Santa Rosa, conocido por su arena clara, agua cristalina y pinares. Salida corta y muy fotogénica.',
-    nota: 'Acceso por camino serrano; verificar transitabilidad.', destino: 'Puente Blanco'
+    nota: 'Acceso por camino serrano; verificar transitabilidad.', destino: 'Parador Puente Blanco, Puente Blanco - Villa, Camino Provincial S273 Km 12, X5197 Villa Yacanto, Córdoba'
   },
   {
     categoria: 'balnearios', nombre: 'Complejo / Camping Río Grande', tag: 'Río · descanso', tiempo: '30–50 min', nivel: 'ripio',
