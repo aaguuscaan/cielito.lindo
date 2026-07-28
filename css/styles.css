@@ -918,6 +918,21 @@ footer {
   opacity: .65;
 }
 
+
+.footer-credit {
+  text-align: center;
+  margin-top: 1.2rem;
+  font-size: .72rem;
+  opacity: .45;
+  letter-spacing: .02em;
+}
+.footer-credit a {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: opacity var(--transition);
+}
+.footer-credit a:hover { opacity: .8; }
+
 /* ── Toast ── */
 #toast-container {
   position: fixed;
