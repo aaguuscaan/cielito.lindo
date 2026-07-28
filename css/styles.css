@@ -495,6 +495,9 @@ section { padding: 6rem 0; }
   align-items: center;
   justify-content: center;
   line-height: 1;
+  text-transform: none;
+  letter-spacing: normal;
+  white-space: nowrap;
 }
 .service-card__name { font-size: .9rem; font-weight: 500; color: var(--wood-dark); }
 [data-theme="dark"] .service-card__name { color: var(--sand); }
