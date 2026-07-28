@@ -38,6 +38,7 @@
     <a href="#servicios">Servicios</a>
     <a href="#disponibilidad">Reservar</a>
     <a href="#resenas">Reseñas</a>
+    <a href="#turismo">Turismo</a>
     <a href="#contacto">Contacto</a>
   </div>
 
@@ -299,6 +300,64 @@
   </div>
 </section>
 
+<!-- ── TURISMO ── -->
+<section class="turismo-section" id="turismo">
+  <div class="section-inner">
+    <div class="fade-up" style="text-align:center; max-width:640px; margin:0 auto;">
+      <span class="section-label">Turismo</span>
+      <h2 class="section-title">Qué hacer <em>cerca de la cabaña</em></h2>
+      <p class="section-subtitle" style="margin:0 auto;">Ríos cristalinos, miradores, pueblos serranos y caminos de montaña. Distancias y tiempos orientativos desde Barrio El Sereno — verificá siempre el estado del camino antes de salir.</p>
+    </div>
+
+    <div class="turismo-legend fade-up">
+      <div class="turismo-legend__item"><span class="turismo-legend__dot turismo-legend__dot--facil"></span> Salida fácil — pueblo, río o paseo con acceso habitual</div>
+      <div class="turismo-legend__item"><span class="turismo-legend__dot turismo-legend__dot--ripio"></span> Con ripio — conducir despacio y evitar tras lluvias fuertes</div>
+      <div class="turismo-legend__item"><span class="turismo-legend__dot turismo-legend__dot--montana"></span> Montaña / aventura — requiere clima estable, equipo y planificación</div>
+    </div>
+
+    <div class="turismo-tabs fade-up">
+      <button class="turismo-tab active" data-filtro="todos">Todos</button>
+      <button class="turismo-tab" data-filtro="balnearios">Balnearios y ríos</button>
+      <button class="turismo-tab" data-filtro="vistas">Vistas y montaña</button>
+      <button class="turismo-tab" data-filtro="pueblos">Pueblos y circuitos</button>
+    </div>
+
+    <div class="turismo-grid" id="turismo-grid">
+      <div style="grid-column:1/-1; text-align:center; padding:3rem;"><span class="loader-sm"></span></div>
+    </div>
+    <p class="turismo-empty" id="turismo-empty" style="display:none;">No hay paseos en esta categoría.</p>
+
+    <div class="turismo-subhead fade-up">
+      <span class="section-label">Circuitos sugeridos</span>
+      <h3>Ideas para armar <em style="font-style:italic;">tu día</em></h3>
+      <p>Combinaciones pensadas según el tiempo disponible y las ganas de aventura.</p>
+    </div>
+    <div class="circuitos-grid" id="circuitos-grid"></div>
+
+    <div class="turismo-bottom-grid">
+      <div class="turismo-panel fade-up">
+        <div class="turismo-panel__title">Checklist antes de salir</div>
+        <ul class="checklist-list" id="checklist-list"></ul>
+      </div>
+      <div class="turismo-panel fade-up fade-up-delay-1">
+        <div class="turismo-panel__title">Contactos útiles</div>
+        <div class="turismo-contact-block">
+          <div class="turismo-contact-block__label">Turismo de Villa Yacanto</div>
+          <p class="turismo-contact-block__text">Oficinas en el acceso por RP S-228 y frente a Plaza de los Niños. <a href="https://www.villayacanto.tur.ar/" target="_blank" rel="noopener">Ver sitio oficial →</a></p>
+        </div>
+        <div class="turismo-contact-block">
+          <div class="turismo-contact-block__label">Cerro Linderos / Champaquí</div>
+          <p class="turismo-contact-block__text">Consultar estado del terreno con Bomberos o Turismo de Villa Yacanto antes de partir. Para ascensos y travesías, contratar prestadores habilitados.</p>
+        </div>
+        <div class="turismo-contact-block">
+          <div class="turismo-contact-block__label">Ante cualquier duda</div>
+          <p class="turismo-contact-block__text">Escribinos por <a href="https://wa.me/5491165483333" target="_blank" rel="noopener">WhatsApp</a> y te ayudamos a planear el paseo.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- ── CONTACTO ── -->
 <section id="contacto">
   <div class="section-inner">
@@ -378,6 +437,7 @@
           <li><a href="#servicios">Servicios</a></li>
           <li><a href="#disponibilidad">Reservas</a></li>
           <li><a href="#resenas">Reseñas</a></li>
+          <li><a href="#turismo">Turismo</a></li>
         </ul>
       </div>
       <div>
@@ -459,6 +519,7 @@
 <script src="./js/auth.js"></script>
 <script src="./js/bookings.js"></script>
 <script src="./js/gallery.js"></script>
+<script src="./js/turismo.js"></script>
 <script src="./js/main.js"></script>
 </body>
 </html>
