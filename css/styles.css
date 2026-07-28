@@ -477,7 +477,23 @@ section { padding: 6rem 0; }
   box-shadow: var(--shadow-md);
   border-color: var(--sand);
 }
-.service-card__icon { font-size: 2rem; margin-bottom: .8rem; }
+.service-card__icon {
+  font-size: 2rem;
+  margin-bottom: .8rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.material-symbols-outlined {
+  font-family: 'Material Symbols Outlined';
+  font-weight: 400;
+  font-style: normal;
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 40;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
 .service-card__name { font-size: .9rem; font-weight: 500; color: var(--wood-dark); }
 [data-theme="dark"] .service-card__name { color: var(--sand); }
 
