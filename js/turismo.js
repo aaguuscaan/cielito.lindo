@@ -3,7 +3,7 @@
    Fuente: guía turística provista por el anfitrión (jul. 2026)
    ============================================================ */
 
-const TURISMO_ORIGEN = 'Barrio El Sereno, Villa Yacanto, Córdoba, Argentina';
+const TURISMO_ORIGEN = 'Cielito Lindo, V6FP+V9, Villa Yacanto, Córdoba, Argentina';
 
 function turismoMapsUrl(destino) {
   const params = new URLSearchParams({
