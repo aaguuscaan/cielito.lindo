@@ -485,15 +485,10 @@ section { padding: 6rem 0; }
   justify-content: center;
   color: var(--wood-dark);
 }
-.service-card__icon svg {
-  width: 2.2rem;
-  height: 2.2rem;
-  color: inherit;
-}
-.service-card__icon svg path,
-.service-card__icon svg rect {
-  stroke: currentColor;
-  fill: none;
+.service-card__icon img {
+  width: 2.5rem;
+  height: 2.5rem;
+  object-fit: contain;
 }
 .service-card__name { font-size: .9rem; font-weight: 500; color: var(--wood-dark); }
 [data-theme="dark"] .service-card__name { color: var(--sand); }
